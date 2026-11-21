@@ -28,6 +28,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim().toUpperCase() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const role = typeof body.role === "string" ? body.role.trim() : "";
     const phone = typeof body.phone === "string" ? body.phone.trim() : "";
@@ -36,14 +37,17 @@ export async function POST(request: Request) {
     const joiningDate = typeof body.joiningDate === "string" ? body.joiningDate : "";
     const totalLeaveAllowance = Number(body.totalLeaveAllowance);
 
-    if (!name || !role || !phone || !/^[0-9+\-()\s]{7,20}$/.test(phone) || !Number.isFinite(salary) || salary < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(joiningDate) || !Number.isInteger(totalLeaveAllowance) || totalLeaveAllowance < 0) {
-      return NextResponse.json({ error: "Name, role, phone, salary, joining date, and leave allowance are required" }, { status: 400 });
+    if (!employeeId || !/^[A-Z0-9_-]{2,20}$/.test(employeeId) || !name || !role || !phone || !/^[0-9+\-()\s]{7,20}$/.test(phone) || !Number.isFinite(salary) || salary < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(joiningDate) || !Number.isInteger(totalLeaveAllowance) || totalLeaveAllowance < 0) {
+      return NextResponse.json({ error: "A short employee ID, name, role, phone, salary, joining date, and leave allowance are required" }, { status: 400 });
     }
 
     await connectToDatabase();
-    const employee = await Employee.create({ name, role, phone, whatsappOptIn, salary, joiningDate, totalLeaveAllowance, status: "Pending" });
+    const employee = await Employee.create({ employeeId, name, role, phone, whatsappOptIn, salary, joiningDate, totalLeaveAllowance, status: "Pending" });
     return NextResponse.json(employee, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === 11000) {
+      return NextResponse.json({ error: "Employee ID is already in use" }, { status: 409 });
+    }
     console.error("Failed to create employee", error);
     return NextResponse.json({ error: "Unable to create employee" }, { status: 500 });
   }
@@ -81,6 +85,7 @@ export async function PUT(request: Request) {
   try {
     const id = new URL(request.url).searchParams.get("id");
     const body = await request.json();
+    const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim().toUpperCase() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const role = typeof body.role === "string" ? body.role.trim() : "";
     const phone = typeof body.phone === "string" ? body.phone.trim() : "";
@@ -89,19 +94,22 @@ export async function PUT(request: Request) {
     const totalLeaveAllowance = Number(body.totalLeaveAllowance);
     const whatsappOptIn = body.whatsappOptIn === true;
 
-    if (!id || !Types.ObjectId.isValid(id) || !name || !role || !phone || !/^[0-9+\-()\s]{7,20}$/.test(phone) || !Number.isFinite(salary) || salary < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(joiningDate) || !Number.isInteger(totalLeaveAllowance) || totalLeaveAllowance < 0) {
+    if (!id || !Types.ObjectId.isValid(id) || !employeeId || !/^[A-Z0-9_-]{2,20}$/.test(employeeId) || !name || !role || !phone || !/^[0-9+\-()\s]{7,20}$/.test(phone) || !Number.isFinite(salary) || salary < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(joiningDate) || !Number.isInteger(totalLeaveAllowance) || totalLeaveAllowance < 0) {
       return NextResponse.json({ error: "Valid employee details are required" }, { status: 400 });
     }
 
     await connectToDatabase();
     const employee = await Employee.findByIdAndUpdate(
       id,
-      { name, role, phone, whatsappOptIn, salary, joiningDate, totalLeaveAllowance },
+      { employeeId, name, role, phone, whatsappOptIn, salary, joiningDate, totalLeaveAllowance },
       { new: true, runValidators: true },
     ).lean();
     if (!employee) return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     return NextResponse.json(employee);
   } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === 11000) {
+      return NextResponse.json({ error: "Employee ID is already in use" }, { status: 409 });
+    }
     console.error("Failed to update employee", error);
     return NextResponse.json({ error: "Unable to update employee" }, { status: 500 });
   }

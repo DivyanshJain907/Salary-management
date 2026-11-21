@@ -3,6 +3,8 @@ import { deleteModel, model, models, Schema } from "mongoose";
 const employeeSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
+    employeeId: { type: String, trim: true, unique: true, sparse: true, default: null },
+    passwordHash: { type: String, select: false, default: null },
     role: { type: String, required: true, trim: true },
     phone: { type: String, trim: true, default: "" },
     whatsappOptIn: { type: Boolean, default: false },
@@ -14,7 +16,7 @@ const employeeSchema = new Schema(
   { timestamps: true },
 );
 
-if (models.Employee && !models.Employee.schema.path("phone")) {
+if (models.Employee && (!models.Employee.schema.path("passwordHash") || !models.Employee.schema.path("employeeId"))) {
   deleteModel("Employee");
 }
 
