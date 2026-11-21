@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/mongodb";
 import { AttendanceBranch } from "@/models/AttendanceBranch";
 import { requireAdminSession, validCoordinate } from "@/lib/attendance";
+import { Types } from "mongoose";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ export async function GET() {
   if (denied) return denied;
   try {
     await connectToDatabase();
-    const branch = await AttendanceBranch.findOneAndUpdate({ name: defaultBranch.name }, { $setOnInsert: defaultBranch }, { upsert: true, new: true }).lean();
+    const branch = await AttendanceBranch.findOneAndUpdate({}, { $setOnInsert: defaultBranch }, { upsert: true, new: true }).lean();
     return NextResponse.json(branch);
   } catch (error) {
     console.error("Failed to load attendance branch", error);
@@ -52,8 +53,9 @@ export async function PUT(request: Request) {
     }
 
     await connectToDatabase();
+    const branchId = typeof body._id === "string" && Types.ObjectId.isValid(body._id) ? body._id : null;
     const branch = await AttendanceBranch.findOneAndUpdate(
-      { name: defaultBranch.name },
+      branchId ? { _id: branchId } : {},
       { name, timezone, latitude, longitude, radiusMeters, shiftStart, shiftEnd, gracePeriodMinutes, halfDayAfterMinutes, checkoutLivenessRequired: body.checkoutLivenessRequired === true, enabled: body.enabled !== false },
       { upsert: true, new: true, runValidators: true },
     ).lean();

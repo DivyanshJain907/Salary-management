@@ -11,6 +11,8 @@ The attendance module is isolated from the existing payroll records and salary c
 - GPS coordinates are intentionally blank on first use. An administrator must enter both coordinates before GPS checks can be enabled.
 - GPS distance must be calculated on the trusted backend with the Haversine formula.
 - The face verification provider currently fails closed with `service_unavailable`. No face match, liveness result, embedding, or model weight is faked.
+- Set `FACE_VERIFICATION_ENDPOINT` and `FACE_VERIFICATION_API_KEY` only for a reviewed, commercially licensed provider.
+- The provider endpoint receives the bound employee ID, event type, session ID, random challenge, fresh selfie, and approved reference image. It must return `verified`, `failed`, `inconclusive`, or `manual_review`, plus face and liveness statuses.
 
 ## Required before employee check-in
 

@@ -7,6 +7,7 @@ type CaptureState = "idle" | "requesting" | "ready" | "failed";
 
 export default function EmployeeAttendancePage() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [locationState, setLocationState] = useState<CaptureState>("idle");
   const [cameraState, setCameraState] = useState<CaptureState>("idle");
@@ -18,10 +19,24 @@ export default function EmployeeAttendancePage() {
   const [loginEmployeeId, setLoginEmployeeId] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [selfie, setSelfie] = useState("");
+  const [challenge, setChallenge] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [attendanceMessage, setAttendanceMessage] = useState("");
+  const [selfieDescriptor, setSelfieDescriptor] = useState<number[]>([]);
 
   useEffect(() => () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
+
+  useEffect(() => {
+    if (cameraState !== "ready" || !videoRef.current || !streamRef.current) return;
+    const video = videoRef.current;
+    video.srcObject = streamRef.current;
+    void video.play().catch(() => {
+      setCameraMessage("Camera stream started, but playback was blocked. Tap the preview or the Allow button again.");
+    });
+  }, [cameraState]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -80,12 +95,32 @@ export default function EmployeeAttendancePage() {
   };
 
   const requestCamera = async () => {
+    if (!window.isSecureContext) {
+      setCameraState("failed");
+      setCameraMessage("Camera access requires HTTPS. Open this page on HTTPS or localhost.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraState("failed");
+      setCameraMessage("This browser or device does not support camera access.");
+      return;
+    }
     setCameraState("requesting");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "user" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        setCameraState("idle");
+        setCameraMessage("Camera stopped unexpectedly. Allow camera access again.");
+      });
       setCameraState("ready");
       setCameraMessage("Camera ready. A fresh capture will be required.");
     } catch {
@@ -102,8 +137,82 @@ export default function EmployeeAttendancePage() {
     setCameraMessage("Camera permission is required.");
   };
 
-  const submitAttendance = () => {
-    setEmployeeMessage("An approved face and liveness provider is required before attendance can be recorded.");
+  const captureSelfie = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+      setAttendanceMessage("Camera preview is not ready yet. Wait for the live image, then capture again.");
+      return;
+    }
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth || 720;
+    canvas.height = video.videoHeight || 720;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const direction = Math.random() > 0.5 ? "turn head left" : "turn head right";
+    setChallenge(direction);
+    const imageData = canvas.toDataURL("image/jpeg", 0.85);
+    setSelfie(imageData);
+    setAttendanceMessage("Processing the fresh selfie...");
+    void (async () => {
+      try {
+        const faceapi = await import("@vladmandic/face-api");
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
+          faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
+          faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
+        ]);
+        const image = new Image();
+        image.src = imageData;
+        await image.decode();
+        const result = await faceapi.detectSingleFace(image, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 })).withFaceLandmarks().withFaceDescriptor();
+        if (!result) {
+          setSelfieDescriptor([]);
+          setAttendanceMessage("No clear face was detected. Re-capture in better lighting.");
+          return;
+        }
+        setSelfieDescriptor(Array.from(result.descriptor));
+        setAttendanceMessage(`Fresh selfie captured. Face detected. Movement challenge: ${direction}.`);
+      } catch {
+        setSelfieDescriptor([]);
+        setAttendanceMessage("Unable to process the selfie. Re-capture and try again.");
+      }
+    })();
+  };
+
+  const submitAttendance = async (eventType: "check_in" | "check_out") => {
+    if (!selfie) {
+      setAttendanceMessage("Capture a fresh selfie before submitting.");
+      return;
+    }
+    setSubmitting(true);
+    setAttendanceMessage("Checking GPS and verification...");
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 });
+      });
+      const response = await fetch("/api/attendance/employee", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventType,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracyMeters: position.coords.accuracy,
+          selfie,
+          challenge,
+          selfieDescriptor,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || result.reason || "Attendance could not be recorded");
+      setAttendanceMessage(`${eventType === "check_in" ? "Check-in" : "Check-out"} verified.`);
+    } catch (error) {
+      setAttendanceMessage(error instanceof Error ? error.message : "Attendance could not be recorded");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const logout = async () => {
@@ -141,15 +250,15 @@ export default function EmployeeAttendancePage() {
 
             <div className={`rounded-lg border p-3 text-sm ${cameraState === "ready" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : cameraState === "failed" ? "border-rose-200 bg-rose-50 text-rose-800" : "bg-slate-50 text-slate-600"}`}>
               <div className="flex items-center gap-3"><Camera size={18} /> <span className="flex-1">{cameraMessage}</span><button onClick={cameraState === "ready" ? stopCamera : requestCamera} disabled={cameraState === "requesting"} className="rounded-md border bg-white px-3 py-1.5 text-xs font-medium disabled:opacity-60">{cameraState === "requesting" ? <Loader2 className="animate-spin" size={15} /> : cameraState === "ready" ? "Stop" : "Allow"}</button></div>
-              {cameraState === "ready" && <div className="mt-4 overflow-hidden rounded-lg bg-slate-900"><video ref={videoRef} autoPlay muted playsInline className="aspect-video w-full object-cover" /></div>}
+              {cameraState === "ready" && <div className="mt-4 overflow-hidden rounded-lg bg-slate-900"><video ref={videoRef} autoPlay muted playsInline onLoadedMetadata={(event) => void event.currentTarget.play().catch(() => undefined)} className="aspect-video w-full object-cover" /><canvas ref={canvasRef} className="hidden" /><button onClick={captureSelfie} className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Capture fresh selfie</button></div>}
             </div>
           </div>
 
-          <div className="mt-4 rounded-lg border border-dashed p-4 text-center text-sm text-slate-500">
-            After authentication is connected, this step will show a random head-movement challenge and capture a fresh selfie. Gallery uploads and reused verification sessions will not be accepted.
+          {attendanceMessage && <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{attendanceMessage}</div>}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <button onClick={() => submitAttendance("check_in")} disabled={!authenticated || !selfie || selfieDescriptor.length !== 128 || submitting} className="rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{submitting ? "Submitting..." : "Check in"}</button>
+            <button onClick={() => submitAttendance("check_out")} disabled={!authenticated || !selfie || selfieDescriptor.length !== 128 || submitting} className="rounded-lg border border-blue-600 px-4 py-3 text-sm font-semibold text-blue-700 disabled:opacity-50">Check out</button>
           </div>
-          <button onClick={submitAttendance} disabled={!authenticated} className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">Check in</button>
-          <p className="mt-3 text-center text-xs text-slate-400">Check-out will use the same GPS and face verification flow.</p>
         </section>
       </div>
     </main>

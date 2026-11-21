@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, CheckCircle2, KeyRound, MapPin, Navigation, RefreshCw, Save, ShieldCheck, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, KeyRound, MapPin, Navigation, Pencil, RefreshCw, Save, ShieldCheck, Upload } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -59,6 +59,8 @@ const emptyBranch: Branch = {
 
 export default function AttendancePage() {
   const [branch, setBranch] = useState<Branch>(emptyBranch);
+  const [editingBranch, setEditingBranch] = useState(false);
+  const [branchBeforeEdit, setBranchBeforeEdit] = useState<Branch>(emptyBranch);
   const [verifications, setVerifications] = useState<Verification[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -73,6 +75,7 @@ export default function AttendancePage() {
   const [enrollmentImage, setEnrollmentImage] = useState("");
   const [enrollmentImageName, setEnrollmentImageName] = useState("");
   const [enrollmentConsent, setEnrollmentConsent] = useState(false);
+  const [enrollmentDescriptor, setEnrollmentDescriptor] = useState<number[]>([]);
   const [savingEnrollment, setSavingEnrollment] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
 
@@ -93,6 +96,8 @@ export default function AttendancePage() {
       if (!branchResponse.ok) throw new Error(branchResult.error || "Unable to load branch settings");
       if (!verificationResponse.ok) throw new Error(verificationResult.error || "Unable to load verification attempts");
       setBranch({ ...emptyBranch, ...branchResult });
+      setBranchBeforeEdit({ ...emptyBranch, ...branchResult });
+      setEditingBranch(!branchResult._id);
       setVerifications(verificationResult);
       setEmployees(employeesResponse.ok ? employeesResult : []);
       setEnrollments(enrollmentResponse.ok ? enrollmentResult : []);
@@ -151,10 +156,33 @@ export default function AttendancePage() {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
-      setEnrollmentImage(typeof reader.result === "string" ? reader.result : "");
+    reader.onload = async () => {
+      const imageData = typeof reader.result === "string" ? reader.result : "";
+      setEnrollmentImage(imageData);
       setEnrollmentImageName(file.name);
       setError("");
+      if (!imageData) return;
+      try {
+        const faceapi = await import("@vladmandic/face-api");
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
+          faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
+          faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
+        ]);
+        const image = new Image();
+        image.src = imageData;
+        await image.decode();
+        const result = await faceapi.detectSingleFace(image, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 })).withFaceLandmarks().withFaceDescriptor();
+        if (!result) {
+          setEnrollmentDescriptor([]);
+          setError("No clear face was detected. Use a well-lit front-facing photo.");
+          return;
+        }
+        setEnrollmentDescriptor(Array.from(result.descriptor));
+      } catch {
+        setEnrollmentDescriptor([]);
+        setError("Unable to process the face reference photo.");
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -168,13 +196,14 @@ export default function AttendancePage() {
       const response = await fetch("/api/attendance/enrollment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employeeId: enrollmentEmployeeId, image: enrollmentImage, consent: enrollmentConsent }),
+        body: JSON.stringify({ employeeId: enrollmentEmployeeId, image: enrollmentImage, descriptor: enrollmentDescriptor, consent: enrollmentConsent }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to save reference photo");
       setEnrollments((current) => [result, ...current.filter((item) => item.employeeId !== result.employeeId)]);
       setEnrollmentImage("");
       setEnrollmentImageName("");
+      setEnrollmentDescriptor([]);
       setEnrollmentConsent(false);
       setMessage("Reference photo saved and waiting for authorized approval.");
     } catch (caught) {
@@ -216,6 +245,8 @@ export default function AttendancePage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to save branch settings");
       setBranch({ ...emptyBranch, ...result });
+      setBranchBeforeEdit({ ...emptyBranch, ...result });
+      setEditingBranch(false);
       setMessage("Attendance branch settings saved.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to save branch settings");
@@ -273,8 +304,8 @@ export default function AttendancePage() {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
           <form onSubmit={saveBranch} className="rounded-xl border bg-white p-6 shadow-sm">
-            <div className="mb-5 flex items-start gap-3"><div className="rounded-lg bg-blue-50 p-2 text-blue-700"><MapPin size={20} /></div><div><h2 className="font-semibold">Branch and shift</h2><p className="mt-1 text-xs text-slate-500">GPS remains unavailable until both coordinates are configured.</p></div></div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="mb-5 flex items-start justify-between gap-3"><div className="flex items-start gap-3"><div className="rounded-lg bg-blue-50 p-2 text-blue-700"><MapPin size={20} /></div><div><h2 className="font-semibold">Branch and shift</h2><p className="mt-1 text-xs text-slate-500">GPS remains unavailable until both coordinates are configured.</p></div></div>{branch._id && (editingBranch ? <button type="button" onClick={() => { setBranch(branchBeforeEdit); setEditingBranch(false); }} className="rounded-md border px-2.5 py-1.5 text-xs font-medium text-slate-600">Cancel</button> : <button type="button" onClick={() => { setBranchBeforeEdit(branch); setEditingBranch(true); }} className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium text-blue-700"><Pencil size={13} />Edit</button>)}</div>
+            <fieldset disabled={!editingBranch} className="grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-medium sm:col-span-2">Branch name<input value={branch.name} onChange={(event) => setBranch({ ...branch, name: event.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal outline-none focus:border-blue-500" /></label>
               <label className="text-sm font-medium">Latitude<input type="number" step="any" value={branch.latitude ?? ""} onChange={(event) => setBranch({ ...branch, latitude: event.target.value === "" ? null : Number(event.target.value) })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal outline-none focus:border-blue-500" placeholder="Required to enable GPS" /></label>
               <label className="text-sm font-medium">Longitude<input type="number" step="any" value={branch.longitude ?? ""} onChange={(event) => setBranch({ ...branch, longitude: event.target.value === "" ? null : Number(event.target.value) })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal outline-none focus:border-blue-500" placeholder="Required to enable GPS" /></label>
@@ -289,14 +320,13 @@ export default function AttendancePage() {
               <label className="text-sm font-medium">Shift end<input type="time" value={branch.shiftEnd} onChange={(event) => setBranch({ ...branch, shiftEnd: event.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal outline-none focus:border-blue-500" /></label>
               <label className="text-sm font-medium">Grace period (minutes)<input type="number" min="0" value={branch.gracePeriodMinutes ?? ""} onChange={(event) => setBranch({ ...branch, gracePeriodMinutes: event.target.value === "" ? null : Number(event.target.value) })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal outline-none focus:border-blue-500" placeholder="Configure policy" /></label>
               <label className="text-sm font-medium">Half-day threshold (minutes)<input type="number" min="0" value={branch.halfDayAfterMinutes ?? ""} onChange={(event) => setBranch({ ...branch, halfDayAfterMinutes: event.target.value === "" ? null : Number(event.target.value) })} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal outline-none focus:border-blue-500" placeholder="Configure policy" /></label>
-            </div>
-            <label className="mt-4 flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={branch.checkoutLivenessRequired} onChange={(event) => setBranch({ ...branch, checkoutLivenessRequired: event.target.checked })} />Require liveness at check-out</label>
-            <button disabled={saving} className="mt-6 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"><Save size={16} />{saving ? "Saving..." : "Save settings"}</button>
+            </fieldset>
+            {editingBranch && <><label className="mt-4 flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={branch.checkoutLivenessRequired} onChange={(event) => setBranch({ ...branch, checkoutLivenessRequired: event.target.checked })} />Require liveness at check-out</label><button disabled={saving} className="mt-6 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"><Save size={16} />{saving ? "Saving..." : "Save settings"}</button></>}
           </form>
 
           <section className="rounded-xl border bg-white p-6 shadow-sm">
             <div className="mb-5 flex items-start gap-3"><div className="rounded-lg bg-amber-50 p-2 text-amber-700"><ShieldCheck size={20} /></div><div><h2 className="font-semibold">Verification review</h2><p className="mt-1 text-xs text-slate-500">No face match is approved while the provider is unconfigured.</p></div></div>
-            {verifications.length === 0 ? <div className="rounded-lg border border-dashed p-6 text-center text-sm text-slate-500">No verification attempts have been recorded.</div> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b text-xs uppercase tracking-wide text-slate-400"><tr><th className="pb-3 pr-4">Employee ID</th><th className="pb-3 pr-4">Event</th><th className="pb-3 pr-4">Status</th><th className="pb-3">Created</th></tr></thead><tbody>{verifications.map((item) => <tr key={item._id} className="border-b last:border-0"><td className="py-3 pr-4 font-medium">{item.employeeId}</td><td className="py-3 pr-4 capitalize">{item.eventType.replace("_", " ")}</td><td className="py-3 pr-4"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs ${item.status === "verified" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.status === "verified" ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}{item.status.replace("_", " ")}</span></td><td className="py-3 text-xs text-slate-500">{new Date(item.createdAt).toLocaleString("en-IN")}</td></tr>)}</tbody></table></div>}
+            {verifications.length === 0 ? <div className="rounded-lg border border-dashed p-6 text-center text-sm text-slate-500">No verification attempts have been recorded.</div> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b text-xs uppercase tracking-wide text-slate-400"><tr><th className="pb-3 pr-4">Employee</th><th className="pb-3 pr-4">Event</th><th className="pb-3 pr-4">Status</th><th className="pb-3">Created</th></tr></thead><tbody>{verifications.map((item) => { const employee = employees.find((entry) => entry._id === item.employeeId); return <tr key={item._id} className="border-b last:border-0"><td className="py-3 pr-4"><p className="font-medium">{employee?.name || "Unknown employee"}</p><p className="mt-0.5 text-xs text-slate-500">{employee?.employeeId || item.employeeId}</p></td><td className="py-3 pr-4 capitalize">{item.eventType.replace("_", " ")}</td><td className="py-3 pr-4"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs ${item.status === "verified" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.status === "verified" ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}{item.status.replace("_", " ")}</span></td><td className="py-3 text-xs text-slate-500">{new Date(item.createdAt).toLocaleString("en-IN")}</td></tr>; })}</tbody></table></div>}
           </section>
         </div>
 
@@ -306,7 +336,7 @@ export default function AttendancePage() {
             <label className="block text-sm font-medium">Employee<select required value={enrollmentEmployeeId} onChange={(event) => setEnrollmentEmployeeId(event.target.value)} className="mt-1 w-full rounded-lg border bg-white px-3 py-2 font-normal outline-none focus:border-blue-500"><option value="">Select employee</option>{employees.map((employee) => <option key={employee._id} value={employee._id}>{employee.name} · {employee.employeeId || employee._id}</option>)}</select></label>
             <label className="mt-4 block text-sm font-medium">Reference image<input required type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectEnrollmentImage(event.target.files?.[0])} className="mt-1 w-full text-sm" /><span className="mt-1 block text-xs font-normal text-slate-500">{enrollmentImageName || "JPEG, PNG, or WebP, up to 5 MB"}</span></label>
             <label className="mt-4 flex items-start gap-2 text-sm text-slate-600"><input required type="checkbox" checked={enrollmentConsent} onChange={(event) => setEnrollmentConsent(event.target.checked)} />I confirm that the employee received the privacy notice and gave explicit consent.</label>
-            <button disabled={savingEnrollment || !enrollmentImage} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60"><Upload size={16} />{savingEnrollment ? "Saving..." : "Save for approval"}</button>
+            <button disabled={savingEnrollment || !enrollmentImage || enrollmentDescriptor.length !== 128} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60"><Upload size={16} />{savingEnrollment ? "Saving..." : "Save for approval"}</button>
           </form>
 
           <section className="rounded-xl border bg-white p-6 shadow-sm">
@@ -325,7 +355,7 @@ export default function AttendancePage() {
           <button disabled={savingCredentials} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60"><KeyRound size={16} />{savingCredentials ? "Saving..." : "Set employee password"}</button>
         </form>
 
-        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900"><strong>Safe deployment boundary:</strong> employee authentication is now connected, but check-in remains unavailable until an approved face/liveness model is configured. The provider interface fails closed and supports manual review instead of generating fake similarity or liveness results.</div>
+        <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900"><strong>Automatic face matching:</strong> after a reference photo is approved, employee selfie descriptors are compared automatically with that employee&apos;s stored reference. The default acceptance threshold is configurable through <code>FACE_MATCH_THRESHOLD</code>. Liveness remains a separate optional control and is currently not-run.</div>
       </div>
     </main>
   );

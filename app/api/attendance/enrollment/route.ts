@@ -25,7 +25,9 @@ export async function POST(request: Request) {
     const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
     const image = typeof body.image === "string" ? body.image : "";
     const consent = body.consent === true;
+    const descriptor = Array.isArray(body.descriptor) ? body.descriptor.map(Number).filter(Number.isFinite) : [];
     if (!Types.ObjectId.isValid(employeeId) || !consent) return NextResponse.json({ error: "Select an employee and confirm consent" }, { status: 400 });
+    if (descriptor.length !== 128) return NextResponse.json({ error: "No usable face descriptor was detected" }, { status: 400 });
 
     const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/.exec(image);
     if (!match) return NextResponse.json({ error: "Upload a JPEG, PNG, or WebP image" }, { status: 400 });
@@ -46,6 +48,7 @@ export async function POST(request: Request) {
         referenceImage: buffer,
         referenceImageMimeType: match[1],
         referenceImageSize: buffer.length,
+        referenceDescriptor: descriptor,
       },
       { upsert: true, new: true, runValidators: true },
     ).select("-referenceImage").lean();

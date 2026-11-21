@@ -1,4 +1,4 @@
-import { model, models, Schema } from "mongoose";
+import { deleteModel, model, models, Schema } from "mongoose";
 
 const faceEnrollmentSchema = new Schema(
   {
@@ -9,10 +9,13 @@ const faceEnrollmentSchema = new Schema(
     referenceImage: { type: Buffer, select: false, default: null },
     referenceImageMimeType: { type: String, trim: true, default: "" },
     referenceImageSize: { type: Number, min: 0, default: 0 },
+    referenceDescriptor: { type: [Number], select: false, default: null },
     provider: { type: String, default: "unconfigured" },
     representationCiphertext: { type: String, select: false, default: null },
   },
   { timestamps: true },
 );
+
+if (models.FaceEnrollment && !models.FaceEnrollment.schema.path("referenceImage")) deleteModel("FaceEnrollment");
 
 export const FaceEnrollment = models.FaceEnrollment || model("FaceEnrollment", faceEnrollmentSchema);
