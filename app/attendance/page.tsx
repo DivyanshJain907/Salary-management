@@ -152,20 +152,40 @@ export default function AttendancePage() {
       setError("Select a JPEG, PNG, or WebP reference photo.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Reference photo must be 5 MB or smaller.");
-      return;
-    }
     const reader = new FileReader();
     reader.onload = async () => {
-      const imageData = typeof reader.result === "string" ? reader.result : "";
-      setEnrollmentImage(imageData);
+      const originalData = typeof reader.result === "string" ? reader.result : "";
+      if (!originalData) return;
       setEnrollmentImageName(file.name);
       setEnrollmentDescriptor([]);
       setProcessingEnrollmentImage(true);
       setError("");
-      if (!imageData) return;
       try {
+        const sourceImage = new Image();
+        sourceImage.src = originalData;
+        await sourceImage.decode();
+
+        const scale = Math.min(1, 1600 / Math.max(sourceImage.naturalWidth, sourceImage.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(sourceImage.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(sourceImage.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Unable to prepare image");
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
+
+        let imageData = canvas.toDataURL("image/jpeg", 0.82);
+        if (imageData.length > 6.7 * 1024 * 1024) {
+          imageData = canvas.toDataURL("image/jpeg", 0.68);
+        }
+        if (imageData.length > 6.7 * 1024 * 1024) {
+          setError("Reference photo is too large even after compression. Choose a smaller image.");
+          setEnrollmentImage("");
+          return;
+        }
+
+        setEnrollmentImage(imageData);
         const faceapi = await import("@vladmandic/face-api");
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
