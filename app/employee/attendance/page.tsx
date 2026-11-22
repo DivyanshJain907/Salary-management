@@ -207,7 +207,13 @@ export default function EmployeeAttendancePage() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || result.reason || "Attendance could not be recorded");
-      setAttendanceMessage(`${eventType === "check_in" ? "Check-in" : "Check-out"} verified.`);
+      const whatsappMessage =
+        result.whatsapp?.status === "sent"
+          ? " WhatsApp confirmation sent."
+          : result.whatsapp?.status === "failed"
+            ? " WhatsApp confirmation could not be sent."
+            : "";
+      setAttendanceMessage(`${eventType === "check_in" ? "Check-in" : "Check-out"} verified.${whatsappMessage}`);
     } catch (error) {
       setAttendanceMessage(error instanceof Error ? error.message : "Attendance could not be recorded");
     } finally {

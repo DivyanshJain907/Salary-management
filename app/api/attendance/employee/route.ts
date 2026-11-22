@@ -11,6 +11,7 @@ import { haversineDistanceMeters } from "@/lib/attendance";
 import { faceVerificationProvider } from "@/lib/attendance-verification";
 import { randomUUID } from "crypto";
 import { Types } from "mongoose";
+import { sendVerifiedAttendanceWhatsapp } from "@/lib/whatsapp";
 
 export const runtime = "nodejs";
 
@@ -175,7 +176,25 @@ export async function POST(request: Request) {
       failureReason: result.reason,
     });
     if (result.status !== "verified") return NextResponse.json({ status: result.status, reason: result.reason }, { status: 422 });
-    return NextResponse.json({ status: "verified", distanceMeters, verificationId: verification._id });
+    let whatsappStatus: Awaited<ReturnType<typeof sendVerifiedAttendanceWhatsapp>> = { status: "skipped", reason: "not_configured" };
+    if (eventType === "check_in") {
+      const employee = await Employee.findById(employeeId).select("name phone whatsappOptIn").lean<{ name: string; phone?: string; whatsappOptIn?: boolean }>();
+      if (employee) {
+        whatsappStatus = await sendVerifiedAttendanceWhatsapp({
+          employeeName: employee.name,
+          phone: employee.phone,
+          whatsappOptIn: employee.whatsappOptIn === true,
+          eventType,
+          occurredAt: new Date(),
+        });
+      }
+    }
+    return NextResponse.json({
+      status: "verified",
+      distanceMeters,
+      verificationId: verification._id,
+      whatsapp: whatsappStatus,
+    });
   } catch (error) {
     console.error("Failed to record attendance", error);
     return NextResponse.json({ error: "Unable to record attendance" }, { status: 500 });

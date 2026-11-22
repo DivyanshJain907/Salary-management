@@ -76,6 +76,7 @@ export default function AttendancePage() {
   const [enrollmentImageName, setEnrollmentImageName] = useState("");
   const [enrollmentConsent, setEnrollmentConsent] = useState(false);
   const [enrollmentDescriptor, setEnrollmentDescriptor] = useState<number[]>([]);
+  const [processingEnrollmentImage, setProcessingEnrollmentImage] = useState(false);
   const [savingEnrollment, setSavingEnrollment] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
 
@@ -160,6 +161,8 @@ export default function AttendancePage() {
       const imageData = typeof reader.result === "string" ? reader.result : "";
       setEnrollmentImage(imageData);
       setEnrollmentImageName(file.name);
+      setEnrollmentDescriptor([]);
+      setProcessingEnrollmentImage(true);
       setError("");
       if (!imageData) return;
       try {
@@ -182,6 +185,8 @@ export default function AttendancePage() {
       } catch {
         setEnrollmentDescriptor([]);
         setError("Unable to process the face reference photo.");
+      } finally {
+        setProcessingEnrollmentImage(false);
       }
     };
     reader.readAsDataURL(file);
@@ -334,9 +339,9 @@ export default function AttendancePage() {
           <form onSubmit={saveEnrollment} className="rounded-xl border bg-white p-6 shadow-sm">
             <div className="mb-5 flex items-start gap-3"><div className="rounded-lg bg-violet-50 p-2 text-violet-700"><Upload size={20} /></div><div><h2 className="font-semibold">Employee reference photo</h2><p className="mt-1 text-xs text-slate-500">Upload a clear, current reference image. It is not public and does not become active until approved.</p></div></div>
             <label className="block text-sm font-medium">Employee<select required value={enrollmentEmployeeId} onChange={(event) => setEnrollmentEmployeeId(event.target.value)} className="mt-1 w-full rounded-lg border bg-white px-3 py-2 font-normal outline-none focus:border-blue-500"><option value="">Select employee</option>{employees.map((employee) => <option key={employee._id} value={employee._id}>{employee.name} · {employee.employeeId || employee._id}</option>)}</select></label>
-            <label className="mt-4 block text-sm font-medium">Reference image<input required type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectEnrollmentImage(event.target.files?.[0])} className="mt-1 w-full text-sm" /><span className="mt-1 block text-xs font-normal text-slate-500">{enrollmentImageName || "JPEG, PNG, or WebP, up to 5 MB"}</span></label>
+            <label className="mt-4 block text-sm font-medium">Reference image<input required type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectEnrollmentImage(event.target.files?.[0])} className="mt-1 w-full text-sm" /><span className="mt-1 block text-xs font-normal text-slate-500">{processingEnrollmentImage ? "Processing face and generating descriptor..." : enrollmentDescriptor.length === 128 ? "Face detected and ready for approval." : enrollmentImageName || "JPEG, PNG, or WebP, up to 5 MB"}</span></label>
             <label className="mt-4 flex items-start gap-2 text-sm text-slate-600"><input required type="checkbox" checked={enrollmentConsent} onChange={(event) => setEnrollmentConsent(event.target.checked)} />I confirm that the employee received the privacy notice and gave explicit consent.</label>
-            <button disabled={savingEnrollment || !enrollmentImage || enrollmentDescriptor.length !== 128} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60"><Upload size={16} />{savingEnrollment ? "Saving..." : "Save for approval"}</button>
+            <button disabled={savingEnrollment || processingEnrollmentImage || !enrollmentImage || enrollmentDescriptor.length !== 128} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60"><Upload size={16} />{savingEnrollment ? "Saving..." : processingEnrollmentImage ? "Processing..." : "Save for approval"}</button>
           </form>
 
           <section className="rounded-xl border bg-white p-6 shadow-sm">
