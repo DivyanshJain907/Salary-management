@@ -15,3 +15,44 @@ body {
 
 * { border-color: #e5e7eb; }
 button, a { -webkit-tap-highlight-color: transparent; }
+
+@media (max-width: 640px) {
+  html, body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  header div.flex.items-center.gap-2.rounded-lg.border.bg-slate-50 {
+    display: none;
+  }
+
+  main,
+  section,
+  aside {
+    min-width: 0;
+  }
+
+  [role="dialog"],
+  .fixed.inset-0 form {
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+  }
+
+  button, input, select, textarea {
+    min-height: 44px;
+  }
+
+  input[type="checkbox"] {
+    min-height: auto;
+  }
+
+  table {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@supports (padding: env(safe-area-inset-bottom)) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

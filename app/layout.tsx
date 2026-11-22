@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -15,10 +15,19 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Jain Sales Corporation | Payroll",
   description: "Employee salary and payroll management",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: "/logo.png",
     apple: "/logo.png",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: "#2563eb",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -1,0 +1,16 @@
+{
+  "name": "Jain Sales Corporation",
+  "short_name": "Jain Payroll",
+  "description": "Employee payroll and attendance",
+  "start_url": "/employee/attendance",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

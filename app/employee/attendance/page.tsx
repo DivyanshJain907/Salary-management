@@ -137,6 +137,13 @@ export default function EmployeeAttendancePage() {
     setCameraMessage("Camera permission is required.");
   };
 
+  const retakeSelfie = () => {
+    setSelfie("");
+    setSelfieDescriptor([]);
+    setChallenge("");
+    setAttendanceMessage("Camera is live. Capture a fresh selfie.");
+  };
+
   const captureSelfie = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
@@ -212,7 +219,13 @@ export default function EmployeeAttendancePage() {
           ? " WhatsApp confirmation sent."
           : result.whatsapp?.status === "failed"
             ? " WhatsApp confirmation could not be sent."
-            : "";
+            : result.whatsapp?.reason === "not_configured"
+              ? " WhatsApp confirmation is not configured."
+              : result.whatsapp?.reason === "opt_out"
+                ? " WhatsApp confirmation is disabled for this employee."
+                : result.whatsapp?.reason === "phone_missing"
+                  ? " WhatsApp confirmation could not be sent because the employee phone is missing."
+                  : "";
       setAttendanceMessage(`${eventType === "check_in" ? "Check-in" : "Check-out"} verified.${whatsappMessage}`);
     } catch (error) {
       setAttendanceMessage(error instanceof Error ? error.message : "Attendance could not be recorded");
@@ -229,7 +242,7 @@ export default function EmployeeAttendancePage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6">
+    <main className="min-h-[100dvh] bg-slate-50 px-3 py-4 text-slate-900 sm:px-6 sm:py-6">
       <div className="mx-auto max-w-lg">
         <div className="mb-6">
           <p className="text-sm font-medium text-blue-700">Jain Sales Corporation</p>
@@ -256,7 +269,13 @@ export default function EmployeeAttendancePage() {
 
             <div className={`rounded-lg border p-3 text-sm ${cameraState === "ready" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : cameraState === "failed" ? "border-rose-200 bg-rose-50 text-rose-800" : "bg-slate-50 text-slate-600"}`}>
               <div className="flex items-center gap-3"><Camera size={18} /> <span className="flex-1">{cameraMessage}</span><button onClick={cameraState === "ready" ? stopCamera : requestCamera} disabled={cameraState === "requesting"} className="rounded-md border bg-white px-3 py-1.5 text-xs font-medium disabled:opacity-60">{cameraState === "requesting" ? <Loader2 className="animate-spin" size={15} /> : cameraState === "ready" ? "Stop" : "Allow"}</button></div>
-              {cameraState === "ready" && <div className="mt-4 overflow-hidden rounded-lg bg-slate-900"><video ref={videoRef} autoPlay muted playsInline onLoadedMetadata={(event) => void event.currentTarget.play().catch(() => undefined)} className="aspect-video w-full object-cover" /><canvas ref={canvasRef} className="hidden" /><button onClick={captureSelfie} className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Capture fresh selfie</button></div>}
+              {cameraState === "ready" && <div className="mt-4 overflow-hidden rounded-lg bg-slate-900">
+                {selfie ? <img src={selfie} alt="Captured employee selfie" className="aspect-[4/3] w-full object-cover" /> : <video ref={videoRef} autoPlay muted playsInline onLoadedMetadata={(event) => void event.currentTarget.play().catch(() => undefined)} className="aspect-[4/3] w-full object-cover" />}
+                <canvas ref={canvasRef} className="hidden" />
+                {selfie
+                  ? <button onClick={retakeSelfie} className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Retake selfie</button>
+                  : <button onClick={captureSelfie} className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Capture fresh selfie</button>}
+              </div>}
             </div>
           </div>
 
