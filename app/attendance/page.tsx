@@ -3,6 +3,7 @@
 import { AlertTriangle, ArrowLeft, CheckCircle2, KeyRound, MapPin, Navigation, Pencil, RefreshCw, Save, ShieldCheck, Upload } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { getFaceDescriptor } from "@/lib/browser-face";
 
 type Branch = {
   _id?: string;
@@ -186,22 +187,16 @@ export default function AttendancePage() {
         }
 
         setEnrollmentImage(imageData);
-        const faceapi = await import("@vladmandic/face-api");
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
-          faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
-          faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
-        ]);
         const image = new Image();
         image.src = imageData;
         await image.decode();
-        const result = await faceapi.detectSingleFace(image, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 })).withFaceLandmarks().withFaceDescriptor();
-        if (!result) {
+        const descriptor = await getFaceDescriptor(image);
+        if (!descriptor) {
           setEnrollmentDescriptor([]);
           setError("No clear face was detected. Use a well-lit front-facing photo.");
           return;
         }
-        setEnrollmentDescriptor(Array.from(result.descriptor));
+        setEnrollmentDescriptor(descriptor);
       } catch {
         setEnrollmentDescriptor([]);
         setError("Unable to process the face reference photo.");

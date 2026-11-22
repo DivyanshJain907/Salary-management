@@ -177,6 +177,7 @@ export async function POST(request: Request) {
     });
     if (result.status !== "verified") return NextResponse.json({ status: result.status, reason: result.reason }, { status: 422 });
     let whatsappStatus: Awaited<ReturnType<typeof sendVerifiedAttendanceWhatsapp>> = { status: "skipped", reason: "not_configured" };
+    let whatsappLink: string | undefined;
     if (eventType === "check_in") {
       const employee = await Employee.findById(employeeId).select("name phone whatsappOptIn").lean<{ name: string; phone?: string; whatsappOptIn?: boolean }>();
       if (employee) {
@@ -187,6 +188,15 @@ export async function POST(request: Request) {
           eventType,
           occurredAt: new Date(),
         });
+        if (whatsappStatus.status === "skipped" && whatsappStatus.reason === "not_configured" && employee.whatsappOptIn === true) {
+          const digits = (employee.phone || "").replace(/\D/g, "");
+          if (digits) {
+            const to = digits.length === 10 ? `91${digits}` : digits;
+            const time = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+            const message = `Jain Sales Corporation\n\nDear ${employee.name},\n\nYour Check-in was successfully verified at ${time}.\n\nStatus: PRESENT\n\nRegards,\nJain Sales Corporation`;
+            whatsappLink = `https://wa.me/${to}?text=${encodeURIComponent(message)}`;
+          }
+        }
       }
     }
     return NextResponse.json({
@@ -194,6 +204,7 @@ export async function POST(request: Request) {
       distanceMeters,
       verificationId: verification._id,
       whatsapp: whatsappStatus,
+      whatsappLink,
     });
   } catch (error) {
     console.error("Failed to record attendance", error);

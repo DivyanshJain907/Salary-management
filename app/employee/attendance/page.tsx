@@ -1,7 +1,9 @@
 "use client";
 
 import { Camera, Loader2, LogOut, MapPin } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { getFaceDescriptor } from "@/lib/browser-face";
 
 type CaptureState = "idle" | "requesting" | "ready" | "failed";
 
@@ -23,6 +25,7 @@ export default function EmployeeAttendancePage() {
   const [challenge, setChallenge] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [attendanceMessage, setAttendanceMessage] = useState("");
+  const [whatsappLink, setWhatsappLink] = useState("");
   const [selfieDescriptor, setSelfieDescriptor] = useState<number[]>([]);
 
   useEffect(() => () => {
@@ -164,22 +167,16 @@ export default function EmployeeAttendancePage() {
     setAttendanceMessage("Processing the fresh selfie...");
     void (async () => {
       try {
-        const faceapi = await import("@vladmandic/face-api");
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
-          faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
-          faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
-        ]);
         const image = new Image();
         image.src = imageData;
         await image.decode();
-        const result = await faceapi.detectSingleFace(image, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 })).withFaceLandmarks().withFaceDescriptor();
-        if (!result) {
+        const descriptor = await getFaceDescriptor(image);
+        if (!descriptor) {
           setSelfieDescriptor([]);
           setAttendanceMessage("No clear face was detected. Re-capture in better lighting.");
           return;
         }
-        setSelfieDescriptor(Array.from(result.descriptor));
+        setSelfieDescriptor(descriptor);
         setAttendanceMessage(`Fresh selfie captured. Face detected. Movement challenge: ${direction}.`);
       } catch {
         setSelfieDescriptor([]);
@@ -214,6 +211,7 @@ export default function EmployeeAttendancePage() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || result.reason || "Attendance could not be recorded");
+      setWhatsappLink(typeof result.whatsappLink === "string" ? result.whatsappLink : "");
       const whatsappMessage =
         result.whatsapp?.status === "sent"
           ? " WhatsApp confirmation sent."
@@ -270,7 +268,7 @@ export default function EmployeeAttendancePage() {
             <div className={`rounded-lg border p-3 text-sm ${cameraState === "ready" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : cameraState === "failed" ? "border-rose-200 bg-rose-50 text-rose-800" : "bg-slate-50 text-slate-600"}`}>
               <div className="flex items-center gap-3"><Camera size={18} /> <span className="flex-1">{cameraMessage}</span><button onClick={cameraState === "ready" ? stopCamera : requestCamera} disabled={cameraState === "requesting"} className="rounded-md border bg-white px-3 py-1.5 text-xs font-medium disabled:opacity-60">{cameraState === "requesting" ? <Loader2 className="animate-spin" size={15} /> : cameraState === "ready" ? "Stop" : "Allow"}</button></div>
               {cameraState === "ready" && <div className="mt-4 overflow-hidden rounded-lg bg-slate-900">
-                {selfie ? <img src={selfie} alt="Captured employee selfie" className="aspect-[4/3] w-full object-cover" /> : <video ref={videoRef} autoPlay muted playsInline onLoadedMetadata={(event) => void event.currentTarget.play().catch(() => undefined)} className="aspect-[4/3] w-full object-cover" />}
+                {selfie ? <Image src={selfie} alt="Captured employee selfie" width={720} height={540} unoptimized className="aspect-[4/3] w-full object-cover" /> : <video ref={videoRef} autoPlay muted playsInline onLoadedMetadata={(event) => void event.currentTarget.play().catch(() => undefined)} className="aspect-[4/3] w-full object-cover" />}
                 <canvas ref={canvasRef} className="hidden" />
                 {selfie
                   ? <button onClick={retakeSelfie} className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Retake selfie</button>
@@ -280,6 +278,7 @@ export default function EmployeeAttendancePage() {
           </div>
 
           {attendanceMessage && <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{attendanceMessage}</div>}
+          {whatsappLink && <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="mt-3 flex min-h-11 items-center justify-center rounded-lg border border-emerald-600 px-4 py-3 text-sm font-semibold text-emerald-700">Open WhatsApp confirmation</a>}
           <div className="mt-4 grid grid-cols-2 gap-3">
             <button onClick={() => submitAttendance("check_in")} disabled={!authenticated || !selfie || selfieDescriptor.length !== 128 || submitting} className="rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{submitting ? "Submitting..." : "Check in"}</button>
             <button onClick={() => submitAttendance("check_out")} disabled={!authenticated || !selfie || selfieDescriptor.length !== 128 || submitting} className="rounded-lg border border-blue-600 px-4 py-3 text-sm font-semibold text-blue-700 disabled:opacity-50">Check out</button>

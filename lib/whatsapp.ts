@@ -1,6 +1,6 @@
 export type WhatsAppSendResult =
   | { status: "sent" }
-  | { status: "skipped"; reason: "not_configured" | "opt_out" | "phone_missing" }
+  | { status: "skipped"; reason: "not_configured" | "opt_out" | "phone_missing"; link?: string }
   | { status: "failed"; reason: string };
 
 export async function sendVerifiedAttendanceWhatsapp(input: {
